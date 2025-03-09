@@ -17,7 +17,7 @@ import torch
 embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
 
 # Load Open-Source Small Language Model (SLM)
-lm_model_name = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"  # Small open-source model
+lm_model_name = "facebook/opt-1.3b"  # Small open-source model
 
 tokenizer = AutoTokenizer.from_pretrained(lm_model_name)
 lm_model = AutoModelForCausalLM.from_pretrained(
