@@ -5,3 +5,6 @@ transformers
 torch
 pandas
 gdown
+rank_bm25
+scikit-learn
+numpy
