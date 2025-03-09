@@ -34,13 +34,14 @@ def download_from_gdrive():
     url = f"https://drive.google.com/uc?id={gdrive_file_id}"
     gdown.download(url, dataset_path, quiet=False)
 
+@st.cache_data
 def download_and_load_data():
     """Loads financial dataset and preprocesses columns."""
     if not os.path.exists(dataset_path):
         st.warning("Dataset not found locally. Downloading from Google Drive...")
         download_from_gdrive()
     df = pd.read_csv(dataset_path)
-    df.columns = df.columns.str.strip()  # Remove extra spaces from column names
+    df.columns = df.columns.str.strip()
     return df
 
 def preprocess_text(df):
@@ -70,7 +71,7 @@ index.add(normalize(embeddings))
 tokenized_corpus = [doc.split() for doc in text_chunks]
 bm25 = BM25Okapi(tokenized_corpus)
 
-def retrieve_relevant_chunks(query, top_k=5):
+def retrieve_relevant_chunks(query, top_k=2):
     """Retrieves the most relevant financial data using FAISS & BM25 hybrid search."""
     query_embedding = embedding_model.encode(query)
     query_embedding = normalize(query_embedding.reshape(1, -1))
@@ -110,7 +111,7 @@ def generate_response(context, query):
 
     output = lm_model.generate(
         input_ids,
-        max_new_tokens=50,  # **Reduce generated token length**
+        max_new_tokens=40,  # **Reduce generated token length**
         do_sample=True,
         temperature=0.7,
         repetition_penalty=1.1
