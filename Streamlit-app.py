@@ -10,6 +10,8 @@ from sentence_transformers import SentenceTransformer
 from rank_bm25 import BM25Okapi
 from sklearn.preprocessing import normalize
 from transformers import AutoModelForCausalLM, AutoTokenizer
+import torch
+
 
 # Load Open-Source Embedding Model
 embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
@@ -18,7 +20,10 @@ embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
 lm_model_name = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"  # Small open-source model
 
 tokenizer = AutoTokenizer.from_pretrained(lm_model_name)
-lm_model = AutoModelForCausalLM.from_pretrained(lm_model_name)
+lm_model = AutoModelForCausalLM.from_pretrained(
+    lm_model_name, torch_dtype=torch.float16, device_map="auto"
+)
+
 
 # Google Drive file ID for the dataset
 gdrive_file_id = "1lbCOi6tTXZ6bDCQ3YWzfcXzG92vlwuq6"  # Replace with actual file ID
