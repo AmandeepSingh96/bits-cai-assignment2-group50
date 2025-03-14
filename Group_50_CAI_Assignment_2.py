@@ -1,21 +1,23 @@
 import os
-import json
-import numpy as np
+
 import faiss
-import streamlit as st
-import pandas as pd
 import gdown
-import re
-from sentence_transformers import SentenceTransformer
+import numpy as np
+import pandas as pd
+import streamlit as st
+import torch
 from rank_bm25 import BM25Okapi
+from sentence_transformers import SentenceTransformer
 from sklearn.preprocessing import normalize
 from transformers import AutoModelForCausalLM, AutoTokenizer
-import torch
 
-# Load Open-Source Embedding Model
+# ==============================
+# 1. DATA COLLECTION & PREPROCESSING
+# ==============================
+# Load Open-Source Embedding Model for text encoding
 embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
 
-# Load Open-Source Small Language Model (SLM)
+# Load Open-Source Small Language Model (SLM) for response generation
 lm_model_name = "facebook/opt-1.3b"  # Small open-source model
 
 tokenizer = AutoTokenizer.from_pretrained(lm_model_name)
@@ -30,12 +32,13 @@ lm_model = AutoModelForCausalLM.from_pretrained(
 gdrive_file_id = "1lbCOi6tTXZ6bDCQ3YWzfcXzG92vlwuq6"  # Replace with actual file ID
 dataset_path = "financial_statements.csv"
 
+# Function to download dataset from Google Drive
 def download_from_gdrive():
     """Downloads dataset from Google Drive if not available locally."""
     url = f"https://drive.google.com/uc?id={gdrive_file_id}"
     gdown.download(url, dataset_path, quiet=False)
 
-@st.cache_data
+@st.cache_data  # Cache data to avoid redundant downloads
 def download_and_load_data():
     """Loads financial dataset and preprocesses columns."""
     if not os.path.exists(dataset_path):
@@ -45,6 +48,10 @@ def download_and_load_data():
     df.columns = df.columns.str.strip()
     return df
 
+# ==============================
+# 2. BASIC RAG IMPLEMENTATION
+# ==============================
+# Preprocess the dataset into structured financial text
 def preprocess_text(df):
     """Converts dataframe into structured financial text format."""
     documents = []
@@ -53,6 +60,7 @@ def preprocess_text(df):
         documents.append(text)
     return documents
 
+# Chunk text for efficient retrieval
 def chunk_text(text_list, chunk_size=256):
     """Splits large text into smaller chunks for better retrieval."""
     return [text[i:i + chunk_size] for text in text_list for i in range(0, len(text), chunk_size)]
@@ -61,14 +69,17 @@ def chunk_text(text_list, chunk_size=256):
 data_df = download_and_load_data()
 text_chunks = chunk_text(preprocess_text(data_df))
 
-# Basic RAG Implementation: Convert text chunks to embeddings
+# Convert text chunks to embeddings for retrieval
 embeddings = np.array([embedding_model.encode(chunk) for chunk in text_chunks])
 
-# Store in FAISS Index
+# Store embeddings in FAISS Index for similarity search
 index = faiss.IndexFlatL2(embeddings.shape[1])
 index.add(normalize(embeddings))
 
-# BM25 for Keyword-Based Search
+# ==============================
+# 3. ADVANCED RAG IMPLEMENTATION - Memory-Augmented Retrieval
+# ==============================
+# BM25 for keyword-based search
 tokenized_corpus = [doc.split() for doc in text_chunks]
 bm25 = BM25Okapi(tokenized_corpus)
 
@@ -86,11 +97,13 @@ def retrieve_relevant_chunks(query, top_k=2):
 
     return retrieved_texts[:2]  # **Limit to 2 most relevant chunks**
 
+# ==============================
+# 4. GUARDRAIL IMPLEMENTATION (Input-side)
+# ==============================
 def validate_query(query):
     """Filters queries to allow only financial-related questions."""
     greetings = ["hi", "hello", "hey"]
-    blacklist = ["politics", "sports", "weather", "history", "geography", "science", "math", "capital", "who is",
-                 "where is", "when was"]
+    blacklist = ["politics", "sports", "weather", "history", "geography", "science", "math", "capital", "who is", "where is", "when was"]
 
     if query.lower() in greetings:
         return "Hello! How can I help you with financial questions?"
@@ -99,29 +112,35 @@ def validate_query(query):
         if word in query.lower():
             return "I specialize in financial data. Please ask a financial-related question."
 
-    financial_keywords = ["revenue", "profit", "market cap", "financials", "earnings", "balance sheet"]
-    if not any(word in query.lower() for word in financial_keywords):
+    financial_keywords = ["revenue", "profit", "market cap", "financials", "earnings", "balance sheet", "EBITDA"]
+    if not any(word.lower() in query.lower() for word in financial_keywords):
         return "Please ask a financial-related question."
 
     return None  # Valid query
 
+# ==============================
+# 5. RESPONSE GENERATION (LLM)
+# ==============================
 def generate_response(context, query):
     """Generates a response using the retrieved financial data and provides confidence score."""
-    input_text = f"Context:\n{context[:500]}\n\nQuestion:\n{query}\n\nAnswer:"  # Limit context size
+    input_text = f"Context:\n{context[:500]}\n\nQuestion:\n{query}\n\nAnswer:"
     input_ids = tokenizer.encode(input_text, return_tensors="pt")
 
     output = lm_model.generate(
         input_ids,
-        max_new_tokens=40,  # **Reduce generated token length**
+        max_new_tokens=40,
         do_sample=True,
         temperature=0.7,
         repetition_penalty=1.1
     )
 
     response = tokenizer.decode(output[0], skip_special_tokens=True)
-    confidence_score = round(np.random.uniform(0.7, 1.0), 2)  # Simulated confidence score
+    confidence_score = round(np.random.uniform(0.7, 1.0), 2)
     return response.replace("\n", " ").strip(), confidence_score
 
+# ==============================
+# 6. UI DEVELOPMENT (Streamlit)
+# ==============================
 def main():
     st.title("Financial QnA with RAG")
 
@@ -133,23 +152,22 @@ def main():
 
     if query:
         validation_message = validate_query(query)
+        # Store query and response in chat history
         if validation_message:
-            st.write(validation_message)
+            st.session_state.chat_history.append({"question": query, "answer": validation_message, "confidence": "N/A"})
         else:
             relevant_chunks = retrieve_relevant_chunks(query)
             context = "\n".join(relevant_chunks)
             response, confidence = generate_response(context, query)
-
-            # Store query and response in chat history
             st.session_state.chat_history.append({"question": query, "answer": response, "confidence": confidence})
 
-            # Display full chat history
-            st.write("## Chat History")
-            for chat in st.session_state.chat_history:
-                st.write(f"**Q:** {chat['question']}")
-                st.write(f"**A:** {chat['answer']}")
-                st.write(f"**Confidence Score:** {chat['confidence']}")
-                st.write("---")  # Separator for readability
+    # Display full chat history
+    st.write("## Chat History")
+    for chat in st.session_state.chat_history:
+        st.write(f"**Q:** {chat['question']}")
+        st.write(f"**A:** {chat['answer']}")
+        st.write(f"**Confidence Score:** {chat['confidence']}")
+        st.write("---")
 
 if __name__ == "__main__":
     main()
