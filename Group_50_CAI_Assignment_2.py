@@ -23,9 +23,9 @@ lm_model_name = "facebook/opt-1.3b"  # Small open-source model
 tokenizer = AutoTokenizer.from_pretrained(lm_model_name)
 lm_model = AutoModelForCausalLM.from_pretrained(
     lm_model_name,
-    torch_dtype=torch.float16,
-    device_map="auto",
-    offload_folder="offload"  # Explicitly set folder for offloading weights
+    torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float16,  # Avoids meta tensor issue
+    low_cpu_mem_usage=True,  # Reduces RAM usage
+    offload_folder="offload" if torch.cuda.is_available() else None,  # Avoid offloading in Streamlit Cloud
 )
 
 # Google Drive file ID for the dataset
