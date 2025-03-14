@@ -12,7 +12,6 @@ from sklearn.preprocessing import normalize
 from transformers import AutoModelForCausalLM, AutoTokenizer
 import torch
 
-
 # Load Open-Source Embedding Model
 embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
 
@@ -21,9 +20,11 @@ lm_model_name = "facebook/opt-1.3b"  # Small open-source model
 
 tokenizer = AutoTokenizer.from_pretrained(lm_model_name)
 lm_model = AutoModelForCausalLM.from_pretrained(
-    lm_model_name, torch_dtype=torch.float16, device_map="auto"
+    lm_model_name,
+    torch_dtype=torch.float16,
+    device_map="auto",
+    offload_folder="offload"  # Explicitly set folder for offloading weights
 )
-
 
 # Google Drive file ID for the dataset
 gdrive_file_id = "1lbCOi6tTXZ6bDCQ3YWzfcXzG92vlwuq6"  # Replace with actual file ID
@@ -123,6 +124,11 @@ def generate_response(context, query):
 
 def main():
     st.title("Financial QnA with RAG")
+
+    # Initialize chat history in session state
+    if "chat_history" not in st.session_state:
+        st.session_state.chat_history = []
+
     query = st.text_input("Enter your financial question:")
 
     if query:
@@ -133,8 +139,17 @@ def main():
             relevant_chunks = retrieve_relevant_chunks(query)
             context = "\n".join(relevant_chunks)
             response, confidence = generate_response(context, query)
-            st.write(f"**Answer:**\n{response}")
-            st.write(f"**Confidence Score:** {confidence}")
+
+            # Store query and response in chat history
+            st.session_state.chat_history.append({"question": query, "answer": response, "confidence": confidence})
+
+            # Display full chat history
+            st.write("## Chat History")
+            for chat in st.session_state.chat_history:
+                st.write(f"**Q:** {chat['question']}")
+                st.write(f"**A:** {chat['answer']}")
+                st.write(f"**Confidence Score:** {chat['confidence']}")
+                st.write("---")  # Separator for readability
 
 if __name__ == "__main__":
     main()
